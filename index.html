@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sort Station ARCADE — Live Trash Hunter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B0F11; --panel:#12181B; --panel-2:#1A2227; --line:#263136;
+    --text:#E7EDEC; --muted:#8CA0A6;
+    --wet:#41A055; --dry:#2F82D6; --metal:#9EAEB6;
+    --ewaste:#D79A2B; --hazard:#CC4A3F; --other:#5B6A70;
+    --focus:#59F2C7; --gold:#FFD13B;
+    --display:"Space Grotesk",Verdana,sans-serif;
+    --body:"IBM Plex Sans",-apple-system,Segoe UI,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:var(--body);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 18px 60px}
+
+  /* Header & Scoreboard Banner */
+  header.top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:16px;
+    padding-bottom:16px;
+    margin-bottom:18px;
+    border-bottom:1px solid var(--line);
+  }
+  .title-group h1{
+    font-family:var(--display);
+    font-weight:700;
+    font-size:clamp(1.4rem,4.5vw,2rem);
+    letter-spacing:-.02em;
+    margin:0;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .title-group h1 span.tag{
+    font-family:var(--mono);
+    font-size:.7rem;
+    color:var(--focus);
+    background:rgba(89,242,199,.12);
+    border:1px solid var(--focus);
+    padding:2px 8px;
+    border-radius:20px;
+    vertical-align:middle;
+  }
+  .title-group p{margin:4px 0 0;color:var(--muted);font-size:.88rem}
+
+  /* Scoreboard Card */
+  .score-hud{
+    display:flex;
+    gap:16px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:10px 18px;
+    font-family:var(--mono);
+  }
+  .score-item span{display:block;font-size:.7rem;color:var(--muted);text-transform:uppercase}
+  .score-item b{font-size:1.4rem;color:var(--gold)}
+  .score-item.streak b{color:var(--focus)}
+
+  /* Console Layout */
+  .console{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+  @media (max-width:900px){.console{grid-template-columns:1fr}}
+
+  /* Viewport Stage */
+  .stage{
+    position:relative;
+    background:#000;
+    border:1px solid var(--line);
+    border-radius:6px;
+    overflow:hidden;
+    aspect-ratio:4/3;
+  }
+  .stage video,.stage canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+  }
+  .stage canvas{object-fit:contain;pointer-events:none}
+
+  /* CRT Scanline Overlay */
+  .scanlines{
+    position:absolute;
+    inset:0;
+    background:linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.3) 50%);
+    background-size:100% 4px;
+    pointer-events:none;
+    z-index:2;
+  }
+
+  /* Live Badge & Telemetry tags */
+  .live-badge{
+    position:absolute;
+    top:12px;
+    right:12px;
+    font-family:var(--mono);
+    font-size:.72rem;
+    background:rgba(0,0,0,.65);
+    padding:4px 10px;
+    border-radius:20px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    z-index:4;
+    border:1px solid rgba(255,255,255,0.08);
+  }
+  .live-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .live-badge.on .dot{background:#3ED66B;box-shadow:0 0 6px #3ED66B;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  .fps{
+    position:absolute;
+    bottom:12px;
+    left:12px;
+    font-family:var(--mono);
+    font-size:.72rem;
+    color:var(--focus);
+    z-index:4;
+    background:rgba(0,0,0,.65);
+    padding:3px 8px;
+    border-radius:3px;
+  }
+
+  /* Floating Floating XP Notification */
+  .floating-xp{
+    position:absolute;
+    color:var(--gold);
+    font-family:var(--display);
+    font-weight:700;
+    font-size:1.6rem;
+    text-shadow:0 2px 8px rgba(0,0,0,0.9);
+    pointer-events:none;
+    z-index:10;
+    animation:floatUp 1.2s cubic-bezier(0.15,0.9,0.3,1) forwards;
+  }
+  @keyframes floatUp{
+    0%{opacity:1;transform:translate(-50%,-50%) scale(0.8);}
+    40%{opacity:1;transform:translate(-50%,-80px) scale(1.15);}
+    100%{opacity:0;transform:translate(-50%,-120px) scale(0.95);}
+  }
+
+  /* Placeholder Overlay */
+  .stage .placeholder{
+    position:absolute;
+    inset:0;
+    display:grid;
+    place-content:center;
+    gap:8px;
+    text-align:center;
+    padding:24px;
+    color:var(--muted);
+    font-size:.88rem;
+    z-index:3;
+    background:#000;
+  }
+  .stage .placeholder strong{color:var(--text);font-family:var(--display);font-size:1.1rem}
+
+  /* Reticle Lock-on Progress Bar on Canvas */
+  .reticle-lock-bar{
+    position:absolute;
+    bottom:0;
+    left:0;
+    right:0;
+    height:6px;
+    background:rgba(255,255,255,0.06);
+    z-index:4;
+  }
+  .reticle-lock-fill{
+    height:100%;
+    width:0%;
+    background:var(--focus);
+    transition:width 0.08s linear;
+  }
+
+  /* Controls */
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  button{
+    font:inherit;
+    font-weight:600;
+    cursor:pointer;
+    border-radius:4px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    padding:11px 18px;
+    transition:all 0.15s;
+  }
+  button:hover:not(:disabled){border-color:var(--muted);background:var(--line)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--focus);color:#062019;border-color:var(--focus)}
+  button.primary:hover:not(:disabled){background:#47e2b7}
+  .hint{margin-top:10px;color:var(--muted);font-size:.84rem}
+
+  /* Telemetry Panel */
+  .panel{
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--panel);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    min-height:360px;
+  }
+  .panel .band{height:8px;background:var(--line);transition:background .2s}
+  .panel .body{padding:18px;display:flex;flex-direction:column;gap:14px;flex:1}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin:0}
+  .item-name{font-family:var(--display);font-weight:700;font-size:1.6rem;line-height:1.15;margin:0}
+  .binline{display:flex;align-items:center;gap:9px;font-weight:600;font-size:.95rem}
+  .swatch{width:13px;height:13px;border-radius:2px;flex:none}
+  
+  .conf-bar-wrap{background:var(--panel-2);border-radius:3px;height:6px;overflow:hidden}
+  .conf-bar{height:100%;border-radius:3px;transition:width .2s}
+  .conf-num{font-family:var(--mono);font-size:.82rem;color:var(--muted);display:flex;justify-content:space-between}
+
+  .game-status-box{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:10px 12px;
+    font-size:.86rem;
+    font-family:var(--mono);
+    color:var(--text);
+  }
+  .game-status-box b{color:var(--focus)}
+
+  /* Inventory & Collection Log */
+  .detlist{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
+  .detlist .row{display:flex;justify-content:space-between;align-items:center;font-size:.86rem}
+  .detlist .row .l{display:flex;align-items:center;gap:7px}
+  .detlist .row .l i{width:8px;height:8px;border-radius:2px;flex:none;font-style:normal}
+  .detlist .row .c{font-family:var(--mono);color:var(--muted)}
+
+  /* System Info Footer */
+  .sysinfo{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:.82rem;border-top:1px solid var(--line);padding-top:12px}
+  .sysinfo div span{display:block;color:var(--muted);font-size:.75rem}
+  .sysinfo div b{font-family:var(--mono);font-weight:500}
+
+  /* Classes Section */
+  section{margin-top:44px}
+  section > h2{font-family:var(--display);font-weight:700;font-size:1.2rem;margin:0 0 6px;letter-spacing:-.01em}
+  section > .sub{margin:0 0 16px;color:var(--muted);font-size:.9rem;max-width:66ch}
+  .classes{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .cls{background:var(--panel);padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+  .cls i{width:11px;height:11px;border-radius:2px;margin-top:5px;flex:none;font-style:normal}
+  .cls b{display:block;font-family:var(--display);font-size:.95rem}
+  .cls span{color:var(--muted);font-size:.82rem}
+
+  footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.83rem;max-width:70ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="title-group">
+      <h1>Sort Station <span class="tag">ARCADE</span></h1>
+      <p>Aim your camera at an object. Hold your target steady to lock-on, classify the waste type, and collect points.</p>
+    </div>
+    <div class="score-hud">
+      <div class="score-item">
+        <span>Total Score</span>
+        <b id="hudScore">0000</b>
+      </div>
+      <div class="score-item streak">
+        <span>Streak</span>
+        <b id="hudStreak">0x</b>
+      </div>
+      <div class="score-item">
+        <span>Items Scanned</span>
+        <b id="hudItems">0</b>
+      </div>
+    </div>
+  </header>
+
+  <div class="console">
+    <div>
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="overlay"></canvas>
+        <div class="scanlines"></div>
+        <div class="live-badge" id="liveBadge"><span class="dot"></span><span id="liveText">OFF</span></div>
+        <div class="fps" id="fpsTag" hidden>0 fps</div>
+        
+        <!-- Lock-on Progress Meter -->
+        <div class="reticle-lock-bar">
+          <div class="reticle-lock-fill" id="lockMeter"></div>
+        </div>
+
+        <div class="placeholder" id="placeholder">
+          <strong>Scanner Offline</strong>
+          <span id="phSub">Click "Start Live Scanner" to initialize camera and object detection.</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="startCam" class="primary">Start live scanner</button>
+        <button id="stopCam" hidden>Stop scanner</button>
+      </div>
+      <p class="hint" id="camnote">Runs entirely in browser via TensorFlow.js (COCO-SSD). No video is uploaded to any server.</p>
+    </div>
+
+    <div class="panel">
+      <div class="band" id="band"></div>
+      <div class="body">
+        <p class="eyebrow">Scanner Telemetry</p>
+        <div id="main"><p class="idle" style="color:var(--muted)">Waiting for live camera feed...</p></div>
+
+        <!-- Real-time Lock-on & Guidance Box -->
+        <div class="game-status-box" id="gameFeedback">
+          STATUS: <b id="gameStatusText">IDLE</b>
+        </div>
+
+        <div class="detlist">
+          <p class="eyebrow" style="margin-bottom:6px">Recent Collect Log</p>
+          <div id="collectLog">
+            <span style="color:var(--muted);font-size:.82rem;font-family:var(--mono)">No items cleared yet.</span>
+          </div>
+        </div>
+
+        <div class="sysinfo">
+          <div><span>Engine</span><b>MobileNet v2 (Browser GPU)</b></div>
+          <div><span>Target Classes</span><b>30+ Mapped Categories</b></div>
+          <div><span>Resolution</span><b id="resTag">—</b></div>
+          <div><span>System Status</span><b id="statusTag">Ready</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Waste Classes & Point System</h2>
+    <p class="sub">Items detected by the model are mapped into appropriate waste bins. Holding steady on an item locks on and collects it for points.</p>
+    <div class="classes" id="classes"></div>
+  </section>
+
+  <footer>
+    Built with TensorFlow.js + COCO-SSD object detection. Runs 100% client-side on GitHub Pages. Provides instant bounding boxes, automated sorting, and audio synthesis without external media files.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+const CLASSES = {
+  wet:    {label:"Wet",    color:"var(--wet)",    bin:"Green Bin", points:100},
+  dry:    {label:"Dry",    color:"var(--dry)",    bin:"Blue Bin",  points:100},
+  metal:  {label:"Metal",  color:"var(--metal)",  bin:"Metal Tray", points:150},
+  ewaste: {label:"E-waste",color:"var(--ewaste)", bin:"E-Waste Crate", points:250},
+  hazard: {label:"Hazardous",color:"var(--hazard)",bin:"Black Bin, Sealed", points:50},
+  other:  {label:"Other",  color:"var(--other)",  bin:"Not a Waste Item", points:0}
+};
+
+// 80 classes mapped to waste categories
+const MAP = {
+  banana:"wet", apple:"wet", sandwich:"wet", orange:"wet", broccoli:"wet",
+  carrot:"wet", "hot dog":"wet", pizza:"wet", donut:"wet", cake:"wet",
+  bottle:"dry", "wine glass":"dry", cup:"dry", bowl:"dry", book:"dry",
+  "potted plant":"wet",
+  fork:"metal", knife:"metal", spoon:"metal", scissors:"metal",
+  laptop:"ewaste", mouse:"ewaste", remote:"ewaste", keyboard:"ewaste",
+  "cell phone":"ewaste", tv:"ewaste", microwave:"ewaste", toaster:"ewaste",
+  "hair drier":"ewaste", toothbrush:"ewaste", clock:"ewaste"
+};
+
+const ACTION_HINT = {
+  wet: "Compostable organic matter. Deposit in Green Bin.",
+  dry: "Recyclable dry packaging. Flatten and deposit in Blue Bin.",
+  metal: "Scrap metal or cutlery. Deposit in Metal Tray.",
+  ewaste: "Contains electronic chips/lithium battery. Handle with care.",
+  hazard: "Hazard warning. Do not crush or pick.",
+  other: "Non-waste entity. Excluded from points."
+};
+
+// Populate categories list
+document.getElementById("classes").innerHTML = Object.entries(CLASSES).map(([k,c])=>{
+  const items = Object.entries(MAP).filter(([,v])=>v===k).map(([n])=>n);
+  const list = items.length ? items.join(", ") : (k==="hazard" ? "Requires dedicated custom model" : "Uncategorized items (furniture, animals, vehicles...)");
+  return `<div class="cls"><i style="background:${c.color}"></i><div><b>${c.label} — ${c.bin} (+${c.points} XP)</b><span>${list}</span></div></div>`;
+}).join("");
+
+const video = document.getElementById("video"),
+  overlay = document.getElementById("overlay"),
+  stage = document.getElementById("stage"),
+  ph = document.getElementById("placeholder"),
+  phSub = document.getElementById("phSub"),
+  bStart = document.getElementById("startCam"),
+  bStop = document.getElementById("stopCam"),
+  camnote = document.getElementById("camnote"),
+  liveBadge = document.getElementById("liveBadge"),
+  liveText = document.getElementById("liveText"),
+  fpsTag = document.getElementById("fpsTag"),
+  band = document.getElementById("band"),
+  main = document.getElementById("main"),
+  resTag = document.getElementById("resTag"),
+  statusTag = document.getElementById("statusTag"),
+  lockMeter = document.getElementById("lockMeter"),
+  gameFeedback = document.getElementById("gameStatusText"),
+  hudScore = document.getElementById("hudScore"),
+  hudStreak = document.getElementById("hudStreak"),
+  hudItems = document.getElementById("hudItems"),
+  collectLog = document.getElementById("collectLog");
+
+let stream = null, model = null, rafId = null, lastT = performance.now(), frames = 0, running = false;
+
+// Game State Variables
+let totalScore = 0;
+let streak = 0;
+let itemsCollectedCount = 0;
+let targetLockCounter = 0;
+const LOCK_THRESHOLD = 20; // Consecutive frames (~0.7 to 1s steady target)
+let currentLockedLabel = null;
+let lastClearedLabel = null;
+let cooldownTimer = 0;
+const collectedItemsHistory = [];
+
+// Native Web Audio Synthesizer (No external mp3 needed)
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, type, duration, gainVal=0.06) {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playLockBeep() {
+  playTone(587.33, "sine", 0.04, 0.04); // D5 radar pulse
+}
+
+function playSuccessJingle() {
+  playTone(523.25, "triangle", 0.12, 0.1); // C5
+  setTimeout(() => playTone(659.25, "triangle", 0.12, 0.1), 90); // E5
+  setTimeout(() => playTone(783.99, "triangle", 0.14, 0.12), 180); // G5
+  setTimeout(() => playTone(1046.50, "triangle", 0.3, 0.14), 270); // C6
+}
+
+function esc(s){ return String(s??"").replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c])); }
+function classOf(name){ return MAP[name] || "other"; }
+
+async function loadModel(){
+  statusTag.textContent = "Loading COCO-SSD…";
+  model = await cocoSsd.load({base:"lite_mobilenet_v2"});
+  statusTag.textContent = "Online";
+}
+
+// Draw futuristic game reticles and bounding boxes
+function drawBoxes(preds, topItem){
+  const w = overlay.width, h = overlay.height;
+  const ctx = overlay.getContext("2d");
+  ctx.clearRect(0,0,w,h);
+
+  preds.forEach(p => {
+    const isPrimary = (topItem && topItem.class === p.class);
+    const cls = classOf(p.class);
+    const color = getComputedStyle(document.documentElement).getPropertyValue(`--${cls}`).trim() || "#8CA0A6";
+    const [x,y,bw,bh] = p.bbox;
+
+    ctx.lineWidth = isPrimary ? 3 : 1.5;
+    ctx.strokeStyle = isPrimary ? (targetLockCounter > 8 ? "#FFD13B" : color) : "rgba(140,160,166,0.4)";
+
+    // Corner reticle accents
+    const cornerSize = Math.min(bw, bh, 20);
+    ctx.beginPath();
+    // Top-left
+    ctx.moveTo(x, y + cornerSize); ctx.lineTo(x, y); ctx.lineTo(x + cornerSize, y);
+    // Top-right
+    ctx.moveTo(x + bw - cornerSize, y); ctx.lineTo(x + bw, y); ctx.lineTo(x + bw, y + cornerSize);
+    // Bottom-left
+    ctx.moveTo(x, y + bh - cornerSize); ctx.lineTo(x, y + bh); ctx.lineTo(x + cornerSize, y + bh);
+    // Bottom-right
+    ctx.moveTo(x + bw - cornerSize, y + bh); ctx.lineTo(x + bw, y + bh); ctx.lineTo(x + bw, y + bh - cornerSize);
+    ctx.stroke();
+
+    // Box fill when locking
+    if(isPrimary && targetLockCounter > 0){
+      ctx.fillStyle = `rgba(89,242,199, ${Math.min(0.22, targetLockCounter / LOCK_THRESHOLD * 0.22)})`;
+      ctx.fillRect(x,y,bw,bh);
+    }
+
+    // Label tag
+    const label = `${p.class.toUpperCase()} [${Math.round(p.score*100)}%]`;
+    ctx.font = `600 ${Math.max(12, w/48)}px "IBM Plex Mono", monospace`;
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, Math.max(0, y - 22), tw, 22);
+    ctx.fillStyle = "#0B0F11";
+    ctx.fillText(label, x + 6, Math.max(0, y - 6));
+  });
+}
+
+function triggerCollectedPopup(text, bbox){
+  const popup = document.createElement("div");
+  popup.className = "floating-xp";
+  popup.textContent = text;
+  
+  // Calculate relative center of target
+  if(bbox && overlay.width){
+    const cx = (bbox[0] + bbox[2]/2) / overlay.width * 100;
+    const cy = (bbox[1] + bbox[3]/2) / overlay.height * 100;
+    popup.style.left = `${cx}%`;
+    popup.style.top = `${cy}%`;
+  } else {
+    popup.style.left = "50%";
+    popup.style.top = "50%";
+  }
+
+  stage.appendChild(popup);
+  setTimeout(() => popup.remove(), 1200);
+}
+
+function processGameCollection(item){
+  const wasteType = classOf(item.class);
+  const cfg = CLASSES[wasteType];
+  
+  if(wasteType === "other" || !cfg.points){
+    gameFeedback.innerHTML = `TARGET <b style="color:var(--muted)">${item.class.toUpperCase()}</b> IS NOT RECOGNIZED AS RECYCLABLE WASTE.`;
+    return;
+  }
+
+  // Scoring
+  streak++;
+  itemsCollectedCount++;
+  const earned = cfg.points * (streak > 3 ? 2 : 1);
+  totalScore += earned;
+
+  // Sound & Popup
+  playSuccessJingle();
+  const streakTag = streak > 3 ? " (2X COMBO!)" : "";
+  triggerCollectedPopup(`+${earned} XP${streakTag}`, item.bbox);
+
+  // Update HUD
+  hudScore.textContent = String(totalScore).padStart(4, '0');
+  hudStreak.textContent = `${streak}x`;
+  hudItems.textContent = itemsCollectedCount;
+
+  // Feed update
+  lastClearedLabel = item.class;
+  cooldownTimer = 35; // Frames before same item can be collected again
+  targetLockCounter = 0;
+  lockMeter.style.width = "0%";
+
+  // Add to recent log
+  collectedItemsHistory.unshift({
+    name: item.class,
+    bin: cfg.bin,
+    color: cfg.color,
+    pts: earned,
+    time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})
+  });
+  if(collectedItemsHistory.length > 5) collectedItemsHistory.pop();
+  renderCollectHistory();
+
+  gameFeedback.innerHTML = `RECYCLED <b style="color:${cfg.color}">${item.class.toUpperCase()}</b>! POINT CAMERA AT NEXT ITEM.`;
+}
+
+function renderCollectHistory(){
+  collectLog.innerHTML = collectedItemsHistory.map(item => `
+    <div class="row" style="margin-bottom:4px">
+      <div class="l"><i style="background:${item.color}"></i><b>${esc(item.name)}</b> &rarr; ${item.bin}</div>
+      <div class="c" style="color:var(--gold)">+${item.pts} XP</div>
+    </div>
+  `).join("");
+}
+
+function updateGameLogic(validPredictions){
+  if(cooldownTimer > 0){
+    cooldownTimer--;
+    if(cooldownTimer === 0) lastClearedLabel = null;
+  }
+
+  if(!validPredictions.length){
+    targetLockCounter = Math.max(0, targetLockCounter - 2);
+    lockMeter.style.width = `${(targetLockCounter / LOCK_THRESHOLD) * 100}%`;
+    currentLockedLabel = null;
+    streak = 0;
+    hudStreak.textContent = "0x";
+    gameFeedback.innerHTML = `STATUS: <b style="color:var(--muted)">SEARCHING FOR WASTE TARGET...</b>`;
+    return null;
+  }
+
+  // Choose the highest scoring valid prediction
+  const top = validPredictions.slice().sort((a,b) => b.score - a.score)[0];
+  const wasteType = classOf(top.class);
+  const cfg = CLASSES[wasteType];
+
+  if(wasteType === "other"){
+    targetLockCounter = 0;
+    lockMeter.style.width = "0%";
+    gameFeedback.innerHTML = `TARGET: <b style="color:var(--muted)">${top.class.toUpperCase()}</b> (NON-WASTE OBJECT)`;
+    return top;
+  }
+
+  // If pointing at already-collected item in cooldown
+  if(top.class === lastClearedLabel && cooldownTimer > 0){
+    gameFeedback.innerHTML = `CLEARED! <b style="color:${cfg.color}">${top.class.toUpperCase()}</b> COLLECTED. FIND NEW ITEM.`;
+    lockMeter.style.width = "0%";
+    return top;
+  }
+
+  // Locking mechanism
+  if(currentLockedLabel === top.class){
+    targetLockCounter++;
+    if(targetLockCounter % 6 === 0) playLockBeep();
+  } else {
+    currentLockedLabel = top.class;
+    targetLockCounter = 1;
+  }
+
+  const progress = Math.min(100, (targetLockCounter / LOCK_THRESHOLD) * 100);
+  lockMeter.style.width = `${progress}%`;
+  lockMeter.style.background = progress > 70 ? "var(--gold)" : "var(--focus)";
+
+  gameFeedback.innerHTML = `LOCKING: <b style="color:${cfg.color}">${top.class.toUpperCase()}</b> &rarr; ${cfg.bin} (${Math.round(progress)}%)`;
+
+  if(targetLockCounter >= LOCK_THRESHOLD){
+    processGameCollection(top);
+  }
+
+  return top;
+}
+
+function renderPanel(preds, topItem){
+  if(!preds.length){
+    band.style.background = "var(--line)";
+    main.innerHTML = `<p class="idle" style="color:var(--muted);margin:0">Nothing detected yet — hold camera closer to an object.</p>`;
+    return;
+  }
+
+  const top = topItem || preds[0];
+  const cls = classOf(top.class), c = CLASSES[cls];
+  band.style.background = c.color;
+
+  main.innerHTML = `
+    <h3 class="item-name">${esc(top.class)}</h3>
+    <div class="binline"><span class="swatch" style="background:${c.color}"></span>${c.label} — ${c.bin}</div>
+    <div class="conf-bar-wrap"><div class="conf-bar" style="width:${Math.round(top.score*100)}%;background:${c.color}"></div></div>
+    <div class="conf-num">
+      <span>Match Confidence: ${Math.round(top.score*100)}%</span>
+      <span style="color:var(--gold)">+${c.points} XP</span>
+    </div>
+    <p class="idle" style="margin:0;font-size:.88rem;color:var(--text)">${esc(ACTION_HINT[cls])}</p>
+  `;
+}
+
+async function loop(){
+  if(!running) return;
+  if(video.readyState >= 2){
+    const preds = await model.detect(video);
+    // Filter only meaningful confidence items
+    const confidentPreds = preds.filter(p => p.score > 0.45);
+    const activeTarget = updateGameLogic(confidentPreds);
+    drawBoxes(confidentPreds, activeTarget);
+    renderPanel(confidentPreds, activeTarget);
+  }
+  frames++;
+  const now = performance.now();
+  if(now - lastT > 1000){
+    fpsTag.textContent = `${frames} fps`;
+    frames = 0; lastT = now;
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+bStart.onclick = async () => {
+  bStart.disabled = true;
+  camnote.textContent = "Booting detector model and camera sensors…";
+  try{
+    if(!model) await loadModel();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    overlay.width = video.videoWidth; 
+    overlay.height = video.videoHeight;
+    resTag.textContent = `${video.videoWidth}×${video.videoHeight}`;
+
+    ph.hidden = true; 
+    bStart.hidden = true; 
+    bStop.hidden = false;
+    liveBadge.classList.add("on"); 
+    liveText.textContent = "SCANNING"; 
+    fpsTag.hidden = false;
+    camnote.textContent = "Scanner live! Point directly at objects to lock on, identify, and earn points.";
+    running = true;
+    loop();
+  }catch(e){
+    bStart.disabled = false;
+    if(e && e.name && e.name.includes("NotAllowed")){
+      camnote.textContent = "Camera permission blocked. Allow camera permissions in your browser address bar and reload.";
+    }else{
+      camnote.textContent = "Camera initialization failed. Check that no other application is using your webcam.";
+    }
+    phSub.textContent = "Error initializing camera or loading neural network.";
+  }
+};
+
+bStop.onclick = () => {
+  running = false;
+  if(rafId) cancelAnimationFrame(rafId);
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  overlay.getContext("2d").clearRect(0, 0, overlay.width, overlay.height);
+  ph.hidden = false; 
+  bStop.hidden = true; 
+  bStart.hidden = false; 
+  bStart.disabled = false;
+  liveBadge.classList.remove("on"); 
+  liveText.textContent = "OFF"; 
+  fpsTag.hidden = true;
+  band.style.background = "var(--line)";
+  main.innerHTML = `<p class="idle" style="color:var(--muted)">Scanner halted.</p>`;
+  gameFeedback.innerHTML = `STATUS: <b style="color:var(--muted)">STANDBY</b>`;
+  camnote.textContent = "Scanner stopped. Click start to resume.";
+};
+</script>
+</body>
+</html>
