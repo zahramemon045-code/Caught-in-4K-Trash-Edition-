@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sort Station — live detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B0F11; --panel:#12181B; --panel-2:#1A2227; --line:#263136;
+    --text:#E7EDEC; --muted:#8CA0A6;
+    --wet:#41A055; --dry:#2F82D6; --metal:#9EAEB6;
+    --ewaste:#D79A2B; --hazard:#CC4A3F; --other:#5B6A70;
+    --focus:#59F2C7;
+    --display:"Space Grotesk",Verdana,sans-serif;
+    --body:"IBM Plex Sans",-apple-system,Segoe UI,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--ink);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 18px 60px}
+
+  header.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding-bottom:16px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  header.top h1{font-family:var(--display);font-weight:700;font-size:clamp(1.4rem,4.5vw,2rem);letter-spacing:-.02em;margin:0}
+  header.top p{margin:0;color:var(--muted);font-size:.9rem;max-width:50ch}
+
+  .console{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+  @media (max-width:900px){.console{grid-template-columns:1fr}}
+
+  .stage{position:relative;background:#000;border:1px solid var(--line);border-radius:4px;overflow:hidden;aspect-ratio:4/3}
+  .stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .stage canvas{object-fit:contain}
+  .live-badge{position:absolute;top:10px;right:12px;font-family:var(--mono);font-size:.72rem;
+    background:rgba(0,0,0,.55);padding:4px 9px;border-radius:20px;display:flex;align-items:center;gap:6px;z-index:3}
+  .live-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .live-badge.on .dot{background:#3ED66B;box-shadow:0 0 6px #3ED66B;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .stage .placeholder{position:absolute;inset:0;display:grid;place-content:center;gap:8px;text-align:center;padding:24px;color:var(--muted);font-size:.88rem;z-index:2;background:#000}
+  .stage .placeholder strong{color:var(--text);font-family:var(--display)}
+  .fps{position:absolute;bottom:10px;left:12px;font-family:var(--mono);font-size:.72rem;color:var(--focus);z-index:3;background:rgba(0,0,0,.5);padding:3px 8px;border-radius:3px}
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  button{font:inherit;font-weight:600;cursor:pointer;border-radius:3px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);padding:11px 18px}
+  button:hover:not(:disabled){border-color:var(--muted)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--focus);color:#062019;border-color:var(--focus)}
+  button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  .hint{margin-top:10px;color:var(--muted);font-size:.85rem}
+
+  .panel{border:1px solid var(--line);border-radius:4px;background:var(--panel);display:flex;flex-direction:column;overflow:hidden;min-height:340px}
+  .panel .band{height:8px;background:var(--line);transition:background .15s}
+  .panel .body{padding:18px;display:flex;flex-direction:column;gap:14px;flex:1}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin:0}
+  .item-name{font-family:var(--display);font-weight:700;font-size:1.55rem;line-height:1.15;margin:0}
+  .binline{display:flex;align-items:center;gap:9px;font-weight:600;font-size:.95rem}
+  .swatch{width:13px;height:13px;border-radius:2px;flex:none}
+  .conf-bar-wrap{background:var(--panel-2);border-radius:3px;height:6px;overflow:hidden}
+  .conf-bar{height:100%;border-radius:3px;transition:width .2s}
+  .conf-num{font-family:var(--mono);font-size:.82rem;color:var(--muted)}
+  .idle{color:var(--muted);font-size:.92rem;margin:auto 0}
+
+  .detlist{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
+  .detlist .row{display:flex;justify-content:space-between;align-items:center;font-size:.86rem}
+  .detlist .row .l{display:flex;align-items:center;gap:7px}
+  .detlist .row .l i{width:8px;height:8px;border-radius:2px;flex:none;font-style:normal}
+  .detlist .row .c{font-family:var(--mono);color:var(--muted)}
+
+  .sysinfo{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:.82rem;border-top:1px solid var(--line);padding-top:12px}
+  .sysinfo div span{display:block;color:var(--muted);font-size:.75rem}
+  .sysinfo div b{font-family:var(--mono);font-weight:500}
+
+  section{margin-top:44px}
+  section > h2{font-family:var(--display);font-weight:700;font-size:1.2rem;margin:0 0 6px;letter-spacing:-.01em}
+  section > .sub{margin:0 0 16px;color:var(--muted);font-size:.9rem;max-width:66ch}
+  .classes{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .cls{background:var(--panel);padding:14px 16px;display:flex;gap:10px;align-items:flex-start}
+  .cls i{width:10px;height:10px;border-radius:2px;margin-top:5px;flex:none;font-style:normal}
+  .cls b{display:block;font-family:var(--display);font-size:.92rem}
+  .cls span{color:var(--muted);font-size:.82rem}
+
+  footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.83rem;max-width:70ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Sort Station — live detection</h1>
+    <p>Point the camera at an object. A vision model draws a box around anything it recognizes and maps it to a waste class.</p>
+  </header>
+
+  <div class="console">
+    <div>
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="overlay"></canvas>
+        <div class="live-badge" id="liveBadge"><span class="dot"></span><span id="liveText">OFF</span></div>
+        <div class="fps" id="fpsTag" hidden>0 fps</div>
+        <div class="placeholder" id="placeholder">
+          <strong>Camera is off</strong>
+          <span id="phSub">Start the live feed to begin detecting objects.</span>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="startCam" class="primary">Start live detection</button>
+        <button id="stopCam" hidden>Stop</button>
+      </div>
+      <p class="hint" id="camnote">Runs entirely in your browser — nothing is uploaded anywhere. First load may take a few seconds while the model downloads.</p>
+    </div>
+
+    <div class="panel">
+      <div class="band" id="band"></div>
+      <div class="body">
+        <p class="eyebrow">Detection result</p>
+        <div id="main"><p class="idle">Nothing detected yet.</p></div>
+        <div class="detlist" id="detlist"></div>
+        <div class="sysinfo">
+          <div><span>Model</span><b>COCO-SSD (MobileNet v2)</b></div>
+          <div><span>Classes</span><b id="clsCount">80</b></div>
+          <div><span>Resolution</span><b id="resTag">—</b></div>
+          <div><span>Status</span><b id="statusTag">idle</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>How objects map to waste classes</h2>
+    <p class="sub">The model itself recognizes general objects, not waste categories — this table is what translates "banana" or "bottle" into a bin. Anything it detects that isn't on this list falls back to Other.</p>
+    <div class="classes" id="classes"></div>
+  </section>
+
+  <footer>
+    General-purpose object detection, not a model trained on trash specifically — it won't tell a soiled paper plate from a clean one, or a battery from a torch. For that level of accuracy you'd train a custom model (e.g. YOLOv8 on a labeled waste dataset via Roboflow) and export it to run in the browser. This gets a live camera and real bounding boxes working today, with the same six-class system as the rest of the site.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+const CLASSES = {
+  wet:    {label:"Wet",    color:"var(--wet)",    bin:"Green bin"},
+  dry:    {label:"Dry",    color:"var(--dry)",    bin:"Blue bin"},
+  metal:  {label:"Metal",  color:"var(--metal)",  bin:"Metal tray"},
+  ewaste: {label:"E-waste",color:"var(--ewaste)", bin:"Collection crate"},
+  hazard: {label:"Hazardous",color:"var(--hazard)",bin:"Black bin, sealed"},
+  other:  {label:"Other",  color:"var(--other)",  bin:"Not a waste item"}
+};
+
+// COCO-SSD's 80 classes mapped to a waste class
+const MAP = {
+  banana:"wet", apple:"wet", sandwich:"wet", orange:"wet", broccoli:"wet",
+  carrot:"wet", "hot dog":"wet", pizza:"wet", donut:"wet", cake:"wet",
+  bottle:"dry", "wine glass":"dry", cup:"dry", bowl:"dry", book:"dry",
+  "potted plant":"wet",
+  fork:"metal", knife:"metal", spoon:"metal", scissors:"metal",
+  laptop:"ewaste", mouse:"ewaste", remote:"ewaste", keyboard:"ewaste",
+  "cell phone":"ewaste", tv:"ewaste", microwave:"ewaste", toaster:"ewaste",
+  "hair drier":"ewaste", toothbrush:"ewaste", clock:"ewaste"
+};
+const GRIP = {
+  wet:"Sealed scoop, low force.", dry:"Grip the rim or neck, keep upright.",
+  metal:"Slow approach, wider grip — edges.", ewaste:"Flat grip, never crush — may hold a battery.",
+  hazard:"Do not pick. Stop and signal.", other:"Not a recognized waste item — leave in place."
+};
+
+document.getElementById("classes").innerHTML = Object.entries(CLASSES).map(([k,c])=>{
+  const items = Object.entries(MAP).filter(([,v])=>v===k).map(([n])=>n);
+  const list = items.length ? items.join(", ") : (k==="hazard" ? "none of COCO-SSD's classes — hazardous items need a custom model" : "everything else the model recognizes (people, furniture, vehicles…)");
+  return `<div class="cls"><i style="background:${c.color}"></i><div><b>${c.label} — ${c.bin}</b><span>${list}</span></div></div>`;
+}).join("");
+
+const video=document.getElementById("video"), overlay=document.getElementById("overlay"),
+  stage=document.getElementById("stage"), ph=document.getElementById("placeholder"), phSub=document.getElementById("phSub"),
+  bStart=document.getElementById("startCam"), bStop=document.getElementById("stopCam"),
+  camnote=document.getElementById("camnote"), liveBadge=document.getElementById("liveBadge"),
+  liveText=document.getElementById("liveText"), fpsTag=document.getElementById("fpsTag"),
+  band=document.getElementById("band"), main=document.getElementById("main"),
+  detlist=document.getElementById("detlist"), resTag=document.getElementById("resTag"),
+  statusTag=document.getElementById("statusTag");
+
+let stream=null, model=null, rafId=null, lastT=performance.now(), frames=0, running=false;
+
+function esc(s){return String(s??"").replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]))}
+function classOf(name){ return MAP[name] || "other"; }
+
+async function loadModel(){
+  statusTag.textContent = "loading model…";
+  model = await cocoSsd.load({base:"lite_mobilenet_v2"});
+  statusTag.textContent = "ready";
+}
+
+function drawBoxes(preds){
+  const w = overlay.width, h = overlay.height;
+  const ctx = overlay.getContext("2d");
+  ctx.clearRect(0,0,w,h);
+  ctx.lineWidth = Math.max(2, w/300);
+  ctx.font = `${Math.max(14, w/38)}px "IBM Plex Mono", monospace`;
+  ctx.textBaseline = "top";
+  preds.forEach(p=>{
+    const cls = classOf(p.class);
+    const color = getComputedStyle(document.documentElement).getPropertyValue(`--${cls}`).trim() || "#8CA0A6";
+    const [x,y,bw,bh] = p.bbox;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(x,y,bw,bh);
+    const label = `${p.class} ${(p.score*100).toFixed(0)}%`;
+    const tw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, Math.max(0,y-22), tw, 22);
+    ctx.fillStyle = "#04100D";
+    ctx.fillText(label, x+5, Math.max(0,y-20));
+  });
+}
+
+function renderPanel(preds){
+  if(!preds.length){
+    band.style.background = "var(--line)";
+    main.innerHTML = `<p class="idle">Nothing detected yet — frame an object more directly.</p>`;
+    detlist.innerHTML = "";
+    return;
+  }
+  const top = preds.slice().sort((a,b)=>b.score-a.score)[0];
+  const cls = classOf(top.class), c = CLASSES[cls];
+  band.style.background = c.color;
+  main.innerHTML = `
+    <h3 class="item-name">${esc(top.class)}</h3>
+    <div class="binline"><span class="swatch" style="background:${c.color}"></span>${c.label} — ${c.bin}</div>
+    <div class="conf-bar-wrap"><div class="conf-bar" style="width:${Math.round(top.score*100)}%;background:${c.color}"></div></div>
+    <div class="conf-num">${Math.round(top.score*100)}% confidence</div>
+    <p class="idle" style="margin:0">${esc(GRIP[cls])}</p>
+  `;
+  detlist.innerHTML = preds.slice().sort((a,b)=>b.score-a.score).slice(0,6).map(p=>{
+    const pc = CLASSES[classOf(p.class)];
+    return `<div class="row"><div class="l"><i style="background:${pc.color}"></i>${esc(p.class)}</div><div class="c">${Math.round(p.score*100)}%</div></div>`;
+  }).join("");
+}
+
+async function loop(){
+  if(!running) return;
+  if(video.readyState >= 2){
+    const preds = await model.detect(video);
+    drawBoxes(preds);
+    renderPanel(preds);
+  }
+  frames++;
+  const now = performance.now();
+  if(now - lastT > 1000){
+    fpsTag.textContent = `${frames} fps`;
+    frames = 0; lastT = now;
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+bStart.onclick = async () => {
+  bStart.disabled = true;
+  camnote.textContent = "Loading the detector…";
+  try{
+    if(!model) await loadModel();
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}, audio:false});
+    video.srcObject = stream;
+    await video.play();
+    overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+    resTag.textContent = `${video.videoWidth}×${video.videoHeight}`;
+    ph.hidden = true; bStart.hidden = true; bStop.hidden = false;
+    liveBadge.classList.add("on"); liveText.textContent = "LIVE"; fpsTag.hidden = false;
+    camnote.textContent = "Live — pointing at multiple objects works, but a single clear object gives a steadier reading.";
+    running = true;
+    loop();
+  }catch(e){
+    bStart.disabled = false;
+    if(e && e.name && e.name.includes("NotAllowed")){
+      camnote.textContent = "Camera permission was blocked. Allow camera access for this site in your browser settings, then reload.";
+    }else{
+      camnote.textContent = "Couldn't start live detection — the model may have failed to load, or the camera is in use by another app.";
+    }
+    phSub.textContent = "Something went wrong starting the camera or model.";
+  }
+};
+
+bStop.onclick = () => {
+  running = false;
+  if(rafId) cancelAnimationFrame(rafId);
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  video.srcObject = null;
+  overlay.getContext("2d").clearRect(0,0,overlay.width,overlay.height);
+  ph.hidden = false; bStop.hidden = true; bStart.hidden = false; bStart.disabled = false;
+  liveBadge.classList.remove("on"); liveText.textContent = "OFF"; fpsTag.hidden = true;
+  band.style.background = "var(--line)";
+  main.innerHTML = `<p class="idle">Nothing detected yet.</p>`;
+  detlist.innerHTML = "";
+  camnote.textContent = "Runs entirely in your browser — nothing is uploaded anywhere.";
+};
+</script>
+</body>
+</html>
